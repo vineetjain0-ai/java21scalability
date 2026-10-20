@@ -1,0 +1,15 @@
+spring:
+  batch:
+    job:
+      enabled: false   # jobs are started by TradeFileLauncher, one virtual thread per file
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+
+trade:
+  input-dir: input
+  topic: trades
+  chunk-size: 100
+  max-threads: 4       # max files processed at the same time

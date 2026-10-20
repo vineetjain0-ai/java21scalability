@@ -1,31 +1,43 @@
-# Java 21 Virtual Thread Scalability Test
+# Trade Batch – Spring Boot 4 + Spring Batch + Virtual Threads + Kafka
 
-Runs a large number of simulated blocking I/O tasks on virtual threads,
-while keeping memory bounded.
+Reads `|`-separated trade files, validates them and publishes each trade to a Kafka topic.
 
-## How memory is bounded
-
-1. **Concurrency cap** – a `Semaphore` limits how many virtual threads are alive at once.
-   The permit is taken *before* the thread is created, so queued work never piles up
-   as unstarted threads. If `maxThreads` is not given (or is too large), it is derived
-   from the max heap: `(maxHeap * heapLimit / 2) / (2 KB + payloadKb)`.
-2. **Heap watchdog** – the submitter pauses while heap usage is above `heapLimit`
-   of the max heap, letting the GC catch up.
-
-## Build & run
-
-```bash
-mvn package
-java -Xmx512m -jar target/java21scalability-1.0-SNAPSHOT.jar \
-     tasks=1000000 maxThreads=10000 sleepMs=100 payloadKb=4 heapLimit=0.75
+```
+input/*.dat ──► one virtual thread per file (max N at once)
+                   └─► Spring Batch job:  FlatFileItemReader ─► TradeProcessor ─► KafkaItemWriter ─► topic "trades"
 ```
 
-| Option       | Default         | Meaning                                          |
-|--------------|-----------------|--------------------------------------------------|
-| `tasks`      | 1,000,000       | Total tasks to run                               |
-| `maxThreads` | derived from heap | Max virtual threads alive at once (capped to safe limit) |
-| `sleepMs`    | 100             | Simulated blocking I/O time per task             |
-| `payloadKb`  | 4               | Memory each task holds while blocked             |
-| `heapLimit`  | 0.75            | Heap fraction at which submission is throttled   |
+## File format
 
-Use `-Xmx` to set the overall memory ceiling; the thread cap scales with it.
+```
+tradeId|symbol|side|quantity|price|tradeDate
+T1001|AAPL|BUY|100|189.25|2026-10-19
+```
+
+The processor upper-cases the symbol and side, calculates `notional = price * quantity`,
+and drops trades with a quantity or price of zero or less.
+
+## Classes
+
+| Class | Role |
+|-------|------|
+| `TradeFileLauncher` | On startup, finds `*.dat` files and runs the job for each one on a virtual thread. A `Semaphore` limits it to `trade.max-threads` files at a time, so memory stays bounded. |
+| `TradeJobConfig` | The Spring Batch job: reader → processor → Kafka writer, in chunks of `trade.chunk-size`. |
+| `TradeProcessor` | Validation and enrichment. |
+| `Trade` | The trade record (sent to Kafka as JSON, keyed by `tradeId`). |
+
+## Run
+
+```bash
+docker compose up -d          # local Kafka on localhost:9092
+mvn spring-boot:run           # processes every .dat file in ./input
+```
+
+Settings are in `src/main/resources/application.yml` (`trade.input-dir`, `trade.topic`,
+`trade.chunk-size`, `trade.max-threads`).
+
+## Test
+
+```bash
+mvn test   # uses an embedded Kafka broker, no Docker needed
+```
