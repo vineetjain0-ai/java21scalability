@@ -1,7 +1,7 @@
 spring:
   batch:
     job:
-      enabled: false   # jobs are started by TradeFileLauncher, one virtual thread per file
+      enabled: false   # the job is started by TradeFileLauncher
   kafka:
     bootstrap-servers: localhost:9092
     producer:
@@ -11,5 +11,5 @@ spring:
 trade:
   input-dir: input
   topic: trades
-  chunk-size: 100
-  max-threads: 4       # max files processed at the same time
+  max-threads: 8       # max files processed at the same time, one virtual thread each (bounds memory)
+  chunk-size: 1000     # lines read, processed and published together; only this many trades per thread are in memory
